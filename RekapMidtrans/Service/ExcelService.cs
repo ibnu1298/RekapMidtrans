@@ -307,8 +307,8 @@ namespace RekapMidtrans.Service
                     wsRecon.Row(2).Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
                     wsRecon.Cells["A2:AM2"].Style.WrapText = true;
                     #endregion
-                    int Row = 0;
                     #region Content
+                    int Row = 0;
                     int fromRow = 0; int toRow = 0; int fromRowOrder = 0; int toRowOrder = 0;
                     for (int i = 0; i < listRekonsiliasiDTO.Count; i++)
                     {
@@ -426,7 +426,7 @@ namespace RekapMidtrans.Service
                     {
                         FileContents = pck.GetAsByteArray(),
                         ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        FileDownloadName = "ContohRekap.xlsx"
+                        FileDownloadName = $"Rekonsiliasi_Midtrans.xlsx"
                     };
                 }
             }
