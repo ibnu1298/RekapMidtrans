@@ -202,10 +202,12 @@ namespace RekapMidtrans.Service
 
                         for (int i = 1; i < dt.Rows.Count; i++)
                         {
+                            Console.WriteLine($"Processing Row : {i+2}\nOrder ID : {dt.Rows[i].ItemArray.GetValue(1).ToString()}");
                             string[] OrderID = dt.Rows[i].ItemArray.GetValue(1).ToString().Split('-');
+                            string paramOrderID = dt.Rows[i].ItemArray.GetValue(1).ToString().Contains("CO")? OrderID[1]: OrderID[0];
                             if (string.IsNullOrEmpty(dt.Rows[i].ItemArray.GetValue(1).ToString())) break;
                             
-                            var data = await GetOrderID(request, OrderID[1]);
+                            var data = await GetOrderID(request, paramOrderID);
                             foreach (var item in data)
                             {
                                 foreach (var detail in item.data.orderDetail.product)
@@ -250,6 +252,7 @@ namespace RekapMidtrans.Service
                 ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
                 using (ExcelPackage pck = new ExcelPackage())
                 {
+                    Console.WriteLine($"Starting Mapping To Excel");
                     #region Header
                     ExcelWorksheet wsRecon = pck.Workbook.Worksheets.Add("Reconciliation");
                     wsRecon.Cells["A1:J1"].Merge = true;
@@ -380,6 +383,7 @@ namespace RekapMidtrans.Service
                             wsRecon.Cells[$"A{fromRow}:A{toRow}"].Value = DateTime.Parse(listRekonsiliasiDTO[i].DateAndTime);
                             wsRecon.Cells[$"A{fromRow}:A{toRow}"].Style.Numberformat.Format = "dd/MM/yyyy";
                             wsRecon.Cells[$"B{fromRow}:B{toRow}"].Merge = true;
+                            Console.WriteLine($"Mapping For Order ID : {listRekonsiliasiDTO[i].OrderID}");
                             wsRecon.Cells[$"C{fromRow}:C{toRow}"].Merge = true;
                             wsRecon.Cells[$"D{fromRow}:D{toRow}"].Merge = true;
                             wsRecon.Cells[$"A{fromRow}:D{toRow}"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;                            
@@ -432,6 +436,7 @@ namespace RekapMidtrans.Service
             }
             catch (Exception ex) 
             {
+                Console.WriteLine(ex.Message);
                 throw ex;
             }
         }
