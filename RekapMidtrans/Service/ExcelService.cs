@@ -242,12 +242,12 @@ namespace RekapMidtrans.Service
                                 ErrorMessage += $"Data Transaction Time pada baris {i+2} tidak bisa di-convert ke DateTime: {dt.Rows[i].ItemArray.GetValue(6).ToString()}\n";
                                 ErrorExisting = true;
                             }
-                            if (ErrorExisting)
-                            {
-                                throw new Exception(ErrorMessage);
-                            }
                         }
-                        Console.WriteLine($"Validasi Selesai...\n");
+                        if (ErrorExisting)
+                        {
+                            throw new Exception(ErrorMessage);
+                        }
+                        Console.WriteLine($"\nValidasi Selesai...\n");
                         
                     }
                 }
