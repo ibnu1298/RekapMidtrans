@@ -6,6 +6,7 @@ using RekapMidtrans.DTO;
 using Serilog;
 using System.Collections.Generic;
 using System.Data;
+using System.Drawing;
 using System.Globalization;
 using System.IO.Packaging;
 using System.Net.Http.Headers;
@@ -143,12 +144,15 @@ namespace RekapMidtrans.Service
 
                     string responseBody = await response.Content.ReadAsStringAsync();
                     var apiResponse = JsonSerializer.Deserialize<ApiResponse>(responseBody);
-                    foreach (var order in apiResponse.data.data)
+                    if (apiResponse.data != null)
                     {
-                        var responseOrder = await GetOrderDetail(request.token, $"{request.URLgetOrderDetail}{order.id_so}");
-                        if (responseOrder.data.id_group.ToString() == groupID)
-                        {                            
-                            result.Add(responseOrder);
+                        foreach (var order in apiResponse.data.data)
+                        {
+                            var responseOrder = await GetOrderDetail(request.token, $"{request.URLgetOrderDetail}{order.id_so}");
+                            if (responseOrder.data.id_group.ToString() == groupID)
+                            {                            
+                                result.Add(responseOrder);
+                            }
                         }
                     }
                 }
@@ -158,6 +162,12 @@ namespace RekapMidtrans.Service
                 }
             }
             return result;
+        }
+        static string GetNumber(string input)
+        {
+            // Memecah string berdasarkan tanda '-' dan mengambil bagian kedua
+            Match match = Regex.Match(input, @"\d{5,}");
+            return match.Success ? match.Value : string.Empty;
         }
         public async Task<DownloadExcelResponse?> DownloadRekapMidtrans(UploadExcelRequest request)
         {
@@ -187,7 +197,61 @@ namespace RekapMidtrans.Service
 
                 string sheetName = "Reconciliation";
                 System.Data.DataTable dt = new System.Data.DataTable();
-
+                #region Validation
+                using (ExcelPackage pck = new ExcelPackage(new FileInfo(fileName)))
+                {
+                    using (FileStream stream = new FileStream(pathToWriteFile, FileMode.Open))
+                    {
+                        pck.Load(stream);
+                        ExcelWorksheet oSheet = pck.Workbook.Worksheets[sheetName];
+                        dt = WorksheetToDataTable(oSheet);
+                        bool ErrorExisting = false;
+                        string ErrorMessage = string.Empty;
+                        for (int i = 1; i < dt.Rows.Count; i++)
+                        {
+                            if (string.IsNullOrEmpty(dt.Rows[i].ItemArray.GetValue(1).ToString()) && 
+                                string.IsNullOrEmpty(dt.Rows[i].ItemArray.GetValue(4).ToString()) &&
+                                string.IsNullOrEmpty(dt.Rows[i].ItemArray.GetValue(6).ToString()) &&
+                                string.IsNullOrEmpty(dt.Rows[i].ItemArray.GetValue(0).ToString()))
+                            {
+                                continue;
+                            }
+                            DateTime parsedDate;
+                            Console.WriteLine($"Checking Row {i+2}");
+                            if (string.IsNullOrEmpty(dt.Rows[i].ItemArray.GetValue(1).ToString()))
+                            {
+                                Console.WriteLine($"Order ID Row {i + 2} Kosong");
+                                ErrorMessage += $"Order ID Row {i + 2} Kosong\n";
+                                ErrorExisting = true;
+                            }
+                            if (string.IsNullOrEmpty(dt.Rows[i].ItemArray.GetValue(4).ToString()))
+                            {
+                                Console.WriteLine($"Amount Row {i + 2} Kosong");
+                                ErrorMessage += $"Amount Row {i + 2} Kosong\n";
+                                ErrorExisting = true;
+                            }
+                            if (!DateTime.TryParseExact(dt.Rows[i].ItemArray.GetValue(0).ToString(), "dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out parsedDate))
+                            {
+                                Console.WriteLine($"Data Date & Time pada baris {i+2} tidak bisa di-convert ke DateTime: {dt.Rows[i].ItemArray.GetValue(0).ToString()}");
+                                ErrorMessage += $"Data Date & Time pada baris {i+2} tidak bisa di-convert ke DateTime: {dt.Rows[i].ItemArray.GetValue(0).ToString()}\n";
+                                ErrorExisting = true;
+                            }
+                            if (!DateTime.TryParseExact(dt.Rows[i].ItemArray.GetValue(6).ToString(), "dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out parsedDate))
+                            {
+                                Console.WriteLine($"Data Transaction Time pada baris {i+2} tidak bisa di-convert ke DateTime: {dt.Rows[i].ItemArray.GetValue(6).ToString()}");
+                                ErrorMessage += $"Data Transaction Time pada baris {i+2} tidak bisa di-convert ke DateTime: {dt.Rows[i].ItemArray.GetValue(6).ToString()}\n";
+                                ErrorExisting = true;
+                            }
+                            if (ErrorExisting)
+                            {
+                                throw new Exception(ErrorMessage);
+                            }
+                        }
+                        Console.WriteLine($"Validasi Selesai...\n");
+                        
+                    }
+                }
+                #endregion
                 using (ExcelPackage pck = new ExcelPackage(new FileInfo(fileName)))
                 {
                     using (FileStream stream = new FileStream(pathToWriteFile, FileMode.Open))
@@ -202,17 +266,31 @@ namespace RekapMidtrans.Service
 
                         for (int i = 1; i < dt.Rows.Count; i++)
                         {
-                            Console.WriteLine($"Processing Row : {i+2}\nOrder ID : {dt.Rows[i].ItemArray.GetValue(1).ToString()}");
-                            string[] OrderID = dt.Rows[i].ItemArray.GetValue(1).ToString().Split('-');
-                            string paramOrderID = dt.Rows[i].ItemArray.GetValue(1).ToString().Contains("CO")? OrderID[1]: OrderID[0];
+                            Console.WriteLine($"Get Data Row : {i+2}\nOrder ID : {dt.Rows[i].ItemArray.GetValue(1).ToString()}");
+                            string OrderID = dt.Rows[i].ItemArray.GetValue(1).ToString();
                             if (string.IsNullOrEmpty(dt.Rows[i].ItemArray.GetValue(1).ToString())) break;
                             
-                            var data = await GetOrderID(request, paramOrderID);
+                            RekonsiliasiDTO rekonsiliasiDTO = new RekonsiliasiDTO();
+                            var data = await GetOrderID(request, GetNumber(OrderID));
+                            if (data.Count == 0)
+                            {
+                                rekonsiliasiDTO.InRow = i + 2;
+                                rekonsiliasiDTO.DateAndTime = dt.Rows[i].ItemArray.GetValue(0).ToString();
+                                rekonsiliasiDTO.OrderID = dt.Rows[i].ItemArray.GetValue(1).ToString();
+                                rekonsiliasiDTO.Channel = dt.Rows[i].ItemArray.GetValue(2).ToString();
+                                rekonsiliasiDTO.TransactionType = dt.Rows[i].ItemArray.GetValue(3).ToString();
+                                rekonsiliasiDTO.Amount = dt.Rows[i].ItemArray.GetValue(4).ToString();
+                                rekonsiliasiDTO.TransactionStatus = dt.Rows[i].ItemArray.GetValue(5).ToString();
+                                rekonsiliasiDTO.TransactionTime = dt.Rows[i].ItemArray.GetValue(6).ToString();
+                                rekonsiliasiDTO.CustomerEmail = dt.Rows[i].ItemArray.GetValue(8).ToString();
+                                rekonsiliasiDTO.GroupID = GetNumber(OrderID);
+                                listRekonsiliasiDTO.Add(rekonsiliasiDTO);
+                            }
                             foreach (var item in data)
                             {
                                 foreach (var detail in item.data.orderDetail.product)
-                                {
-                                    RekonsiliasiDTO rekonsiliasiDTO = new RekonsiliasiDTO();
+                                {                                    
+                                    rekonsiliasiDTO.InRow = i+2;
                                     rekonsiliasiDTO.DateAndTime = dt.Rows[i].ItemArray.GetValue(0).ToString();
                                     rekonsiliasiDTO.OrderID = dt.Rows[i].ItemArray.GetValue(1).ToString();
                                     rekonsiliasiDTO.Channel = dt.Rows[i].ItemArray.GetValue(2).ToString();
@@ -221,7 +299,7 @@ namespace RekapMidtrans.Service
                                     rekonsiliasiDTO.TransactionStatus = dt.Rows[i].ItemArray.GetValue(5).ToString();
                                     rekonsiliasiDTO.TransactionTime = dt.Rows[i].ItemArray.GetValue(6).ToString();
                                     rekonsiliasiDTO.CustomerEmail = dt.Rows[i].ItemArray.GetValue(8).ToString();
-                                    rekonsiliasiDTO.GroupID = OrderID[1];
+                                    rekonsiliasiDTO.GroupID = GetNumber(OrderID);
                                     rekonsiliasiDTO.IdOrder = item.data.id_so;
                                     DateTime dateTime = DateTime.ParseExact(rekonsiliasiDTO.DateAndTime, "dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture);
 
@@ -239,7 +317,7 @@ namespace RekapMidtrans.Service
                                     rekonsiliasiDTO.LocalShipping = item.data.financialInformation.expense.shippingCustomer;
                                     rekonsiliasiDTO.COGS = item.data.financialInformation.expense.cogs;
                                     rekonsiliasiDTO.VoucherDiscount = item.data.financialInformation.expense.discount;
-                                    rekonsiliasiDTO.GrossProfit = item.data.financialInformation.expense.discount;
+                                    rekonsiliasiDTO.Refund = item.data.financialInformation.expense.refund;
                                     rekonsiliasiDTO.Sales = item.data.sales;
                                     listRekonsiliasiDTO.Add(rekonsiliasiDTO);
                                 }
@@ -252,7 +330,7 @@ namespace RekapMidtrans.Service
                 ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
                 using (ExcelPackage pck = new ExcelPackage())
                 {
-                    Console.WriteLine($"Starting Mapping To Excel");
+                    Console.WriteLine($"\nStarting Mapping To Excel...\n");
                     #region Header
                     ExcelWorksheet wsRecon = pck.Workbook.Worksheets.Add("Reconciliation");
                     wsRecon.Cells["A1:J1"].Merge = true;
@@ -290,25 +368,27 @@ namespace RekapMidtrans.Service
                     wsRecon.Cells["X2"].Value = "COGS";
                     wsRecon.Cells["Y2"].Value = "Voucher Diskon";
                     wsRecon.Cells["Z2"].Value = "COGS - Voucher Diskon";
-                    wsRecon.Cells["AA2"].Value = "Adjustment Ongkir China";
-                    wsRecon.Cells["AB2"].Value = "Gross Profit";
-                    wsRecon.Cells["AC2"].Value = "Refund";
-                    wsRecon.Cells["AD2"].Value = "Notes";
-                    wsRecon.Cells["AE2"].Value = "Sales";
-                    wsRecon.Cells["AF2"].Value = "SS Paid OMS";
-                    wsRecon.Cells["AG2"].Value = "SS Financial Information";
-                    wsRecon.Cells["AH2"].Value = "Payment to vendor";
-                    wsRecon.Cells["AI2"].Value = "Delivery to Indonesia";
-                    wsRecon.Cells["AJ2"].Value = "Goods in Indonesia";
-                    wsRecon.Cells["AK2"].Value = "Goods in warehouse";
-                    wsRecon.Cells["AL2"].Value = "Delivery to Customer";
-                    wsRecon.Cells["AM2"].Value = "Receive by customer";
+                    wsRecon.Cells["AA2"].Value = "Adjustment";
+                    wsRecon.Cells["AB2"].Value = "Notes";
+                    wsRecon.Cells["AC2"].Value = "Gross Profit";
+                    wsRecon.Cells["AD2"].Value = "Percentase COGS : Revenue";
+                    wsRecon.Cells["AE2"].Value = "Refund";
+                    wsRecon.Cells["AF2"].Value = "Notes";
+                    wsRecon.Cells["AG2"].Value = "Sales";
+                    wsRecon.Cells["AH2"].Value = "SS Paid OMS";
+                    wsRecon.Cells["AI2"].Value = "SS Financial Information";
+                    wsRecon.Cells["AJ2"].Value = "Payment to vendor";
+                    wsRecon.Cells["AK2"].Value = "Delivery to Indonesia";
+                    wsRecon.Cells["AL2"].Value = "Goods in Indonesia";
+                    wsRecon.Cells["AM2"].Value = "Goods in warehouse";
+                    wsRecon.Cells["AN2"].Value = "Delivery to Customer";
+                    wsRecon.Cells["AO2"].Value = "Receive by customer";
                     wsRecon.Row(2).Style.Font.Bold = true;
                     wsRecon.Row(2).Height = 60;
-                    wsRecon.Cells["A2:AM2"].AutoFilter = true;                    
+                    wsRecon.Cells["A2:AO2"].AutoFilter = true;                    
                     wsRecon.Row(2).Style.VerticalAlignment = ExcelVerticalAlignment.Center;
                     wsRecon.Row(2).Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
-                    wsRecon.Cells["A2:AM2"].Style.WrapText = true;
+                    wsRecon.Cells["A2:AO2"].Style.WrapText = true;
                     #endregion
                     #region Content
                     int Row = 0;
@@ -324,13 +404,20 @@ namespace RekapMidtrans.Service
                         wsRecon.Cells[$"R{Row}"].Style.Numberformat.Format = "#,##0";
                         wsRecon.Cells[$"S{Row}"].Value = listRekonsiliasiDTO[i].SubTotal;
                         wsRecon.Cells[$"S{Row}"].Style.Numberformat.Format = "#,##0";
-
                         wsRecon.Cells[$"B{Row}"].Value = listRekonsiliasiDTO[i].OrderID;
                         wsRecon.Cells[$"M{Row}"].Value = listRekonsiliasiDTO[i].NoInvoice;
+                        wsRecon.Cells[$"N{Row}"].Value = listRekonsiliasiDTO[i].CustomerName;
                         wsRecon.Cells[$"I{Row}"].Value = listRekonsiliasiDTO[i].CustomerEmail;
                         wsRecon.Cells[$"C{Row}"].Value = listRekonsiliasiDTO[i].Channel;
                         wsRecon.Cells[$"D{Row}"].Value = listRekonsiliasiDTO[i].TransactionType;
                         wsRecon.Cells[$"F{Row}"].Value = listRekonsiliasiDTO[i].TransactionStatus;
+                        wsRecon.Cells[$"AE{Row}"].Value = listRekonsiliasiDTO[i].Refund > 0 ? listRekonsiliasiDTO[i].Refund : string.Empty;
+                        string fieldNotes = string.Empty;
+                        if (listRekonsiliasiDTO[i].Refund > 0) fieldNotes = "Refund";
+                        if (string.IsNullOrEmpty(listRekonsiliasiDTO[i].IdOrder) && string.IsNullOrEmpty(fieldNotes)) fieldNotes = "Group ID Tidak ditemukan";
+                        if (listRekonsiliasiDTO[i].COGS == 0 && listRekonsiliasiDTO[i].Refund == 0) fieldNotes = "COGS & Refund Tidak ditemukan";
+                        wsRecon.Cells[$"AF{Row}"].Value = fieldNotes;
+                        wsRecon.Cells[$"X{Row}"].Value = listRekonsiliasiDTO[i].COGS == 0 && listRekonsiliasiDTO[i].Refund == 0 ? string.Empty : listRekonsiliasiDTO[i].COGS;
                         wsRecon.Cells.AutoFitColumns();
                         fromRowOrder = (i == 0 || (i > 0 && (listRekonsiliasiDTO[i].IdOrder != listRekonsiliasiDTO[i - 1].IdOrder))) ? Row : fromRowOrder;
                         toRowOrder = (i == listRekonsiliasiDTO.Count - 1 || i < listRekonsiliasiDTO.Count && (listRekonsiliasiDTO[i].IdOrder != listRekonsiliasiDTO[i + 1].IdOrder)) ? Row : toRowOrder;
@@ -338,10 +425,14 @@ namespace RekapMidtrans.Service
                         {
                             wsRecon.Cells[$"L{fromRowOrder}:L{toRowOrder}"].Merge = true;
                             wsRecon.Cells[$"L{fromRowOrder}:L{toRowOrder}"].Value = listRekonsiliasiDTO[i].IdOrder;
+                            if (string.IsNullOrEmpty(listRekonsiliasiDTO[i].IdOrder))
+                            {
+                                wsRecon.Cells[$"A{fromRowOrder}:ZZ{toRowOrder}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                                wsRecon.Cells[$"A{fromRowOrder}:ZZ{toRowOrder}"].Style.Fill.BackgroundColor.SetColor(System.Drawing.ColorTranslator.FromHtml("#FFFF00"));
+                            }
                             wsRecon.Cells[$"M{fromRowOrder}:M{toRowOrder}"].Merge = true;
                             wsRecon.Cells[$"M{fromRowOrder}:M{toRowOrder}"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
                             wsRecon.Cells[$"N{fromRowOrder}:N{toRowOrder}"].Merge = true;
-                            wsRecon.Cells[$"N{fromRowOrder}:N{toRowOrder}"].Value = listRekonsiliasiDTO[i].CustomerName;
                             wsRecon.Cells[$"T{fromRowOrder}:T{toRowOrder}"].Merge = true;
                             wsRecon.Cells[$"T{fromRowOrder}:T{toRowOrder}"].Value = listRekonsiliasiDTO[i].LocalShipping;
                             wsRecon.Cells[$"T{fromRowOrder}:T{toRowOrder}"].Style.Numberformat.Format = "#,##0";
@@ -351,7 +442,11 @@ namespace RekapMidtrans.Service
                             wsRecon.Cells[$"W{fromRowOrder}:W{toRowOrder}"].Merge = true;
                             wsRecon.Cells[$"W{fromRowOrder}:W{toRowOrder}"].Value = "";
                             wsRecon.Cells[$"X{fromRowOrder}:X{toRowOrder}"].Merge = true;
-                            wsRecon.Cells[$"X{fromRowOrder}:X{toRowOrder}"].Value = listRekonsiliasiDTO[i].COGS;
+                            if (listRekonsiliasiDTO[i].COGS == 0 && listRekonsiliasiDTO[i].Refund == 0)
+                            {
+                                wsRecon.Cells[$"A{fromRowOrder}:ZZ{toRowOrder}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                                wsRecon.Cells[$"A{fromRowOrder}:ZZ{toRowOrder}"].Style.Fill.BackgroundColor.SetColor(System.Drawing.ColorTranslator.FromHtml("#00B050"));
+                            }
                             wsRecon.Cells[$"X{fromRowOrder}:X{toRowOrder}"].Style.Numberformat.Format = "#,##0";
                             wsRecon.Cells[$"Y{fromRowOrder}:Y{toRowOrder}"].Merge = true;
                             wsRecon.Cells[$"Y{fromRowOrder}:Y{toRowOrder}"].Value = listRekonsiliasiDTO[i].VoucherDiscount;
@@ -362,15 +457,30 @@ namespace RekapMidtrans.Service
                             wsRecon.Cells[$"AA{fromRowOrder}:AA{toRowOrder}"].Merge = true;
                             //wsRecon.Cells[$"AA{fromRowOrder}:AA{toRowOrder}"].Value = "";
                             wsRecon.Cells[$"AB{fromRowOrder}:AB{toRowOrder}"].Merge = true;
-                            wsRecon.Cells[$"AB{fromRowOrder}:AB{toRowOrder}"].Formula = $"=U{fromRowOrder}-X{fromRowOrder}+Y{fromRowOrder}+AA{fromRowOrder}";
-                            wsRecon.Cells[$"AB{fromRowOrder}:AB{toRowOrder}"].Style.Numberformat.Format = "#,##0";
+                            wsRecon.Cells[$"AB{fromRowOrder}:AB{toRowOrder}"].Value = "";
                             wsRecon.Cells[$"AC{fromRowOrder}:AC{toRowOrder}"].Merge = true;
-                            //wsRecon.Cells[$"AC{fromRowOrder}:AC{toRowOrder}"].Value = "";
+                            wsRecon.Cells[$"AC{fromRowOrder}:AC{toRowOrder}"].Formula = $"=U{fromRowOrder}-X{fromRowOrder}+Y{fromRowOrder}+AA{fromRowOrder}";
+                            wsRecon.Cells[$"AC{fromRowOrder}:AC{toRowOrder}"].Style.Numberformat.Format = "#,##0";
                             wsRecon.Cells[$"AD{fromRowOrder}:AD{toRowOrder}"].Merge = true;
-                            //wsRecon.Cells[$"AD{fromRowOrder}:AD{toRowOrder}"].Value = "";
+                            wsRecon.Cells[$"AD{fromRowOrder}:AD{toRowOrder}"].Formula = $"=X{fromRowOrder}/U{fromRowOrder}";
+                            wsRecon.Cells[$"AD{fromRowOrder}:AD{toRowOrder}"].Style.Numberformat.Format = "0%";
                             wsRecon.Cells[$"AE{fromRowOrder}:AE{toRowOrder}"].Merge = true;
-                            wsRecon.Cells[$"AE{fromRowOrder}:AE{toRowOrder}"].Value = listRekonsiliasiDTO[i].Sales;
-                            wsRecon.Cells[$"AE{fromRowOrder}:AE{toRowOrder}"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                            if (listRekonsiliasiDTO[i].Refund > 0)
+                            {
+                                wsRecon.Cells[$"L{fromRowOrder}:ZZ{toRowOrder}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                                wsRecon.Cells[$"L{fromRowOrder}:ZZ{toRowOrder}"].Style.Fill.BackgroundColor.SetColor(System.Drawing.ColorTranslator.FromHtml("#FF0000"));
+                            }
+                            wsRecon.Cells[$"AF{fromRowOrder}:AF{toRowOrder}"].Merge = true;
+                            wsRecon.Cells[$"AG{fromRowOrder}:AG{toRowOrder}"].Merge = true;
+                            wsRecon.Cells[$"AG{fromRowOrder}:AG{toRowOrder}"].Value = listRekonsiliasiDTO[i].Sales;
+                            wsRecon.Cells[$"AG{fromRowOrder}:AG{toRowOrder}"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                            if (string.IsNullOrEmpty(listRekonsiliasiDTO[i].Sales))
+                            {                                
+                                wsRecon.Cells[$"AG{fromRowOrder}:AG{toRowOrder}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                                wsRecon.Cells[$"AG{fromRowOrder}:AG{toRowOrder}"].Style.Fill.BackgroundColor.SetColor(System.Drawing.ColorTranslator.FromHtml("#92D050"));
+                            }
+                            wsRecon.Cells[$"AH{fromRowOrder}:AH{toRowOrder}"].Merge = true;
+                            wsRecon.Cells[$"AI{fromRowOrder}:AI{toRowOrder}"].Merge = true;
 
                             fromRowOrder = toRowOrder + 1;
                             toRowOrder = 0;
@@ -383,7 +493,12 @@ namespace RekapMidtrans.Service
                             wsRecon.Cells[$"A{fromRow}:A{toRow}"].Value = DateTime.Parse(listRekonsiliasiDTO[i].DateAndTime);
                             wsRecon.Cells[$"A{fromRow}:A{toRow}"].Style.Numberformat.Format = "dd/MM/yyyy";
                             wsRecon.Cells[$"B{fromRow}:B{toRow}"].Merge = true;
-                            Console.WriteLine($"Mapping For Order ID : {listRekonsiliasiDTO[i].OrderID}");
+                            if (!listRekonsiliasiDTO[i].OrderID.Contains("CO"))
+                            {
+                                wsRecon.Cells[$"A{fromRow}:AO{toRow}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                                wsRecon.Cells[$"A{fromRow}:AO{toRow}"].Style.Fill.BackgroundColor.SetColor(System.Drawing.ColorTranslator.FromHtml("#00B0F0"));
+                            }
+                            Console.WriteLine($"Mapping For Row : {listRekonsiliasiDTO[i].InRow}\nOrder ID : {listRekonsiliasiDTO[i].OrderID}");
                             wsRecon.Cells[$"C{fromRow}:C{toRow}"].Merge = true;
                             wsRecon.Cells[$"D{fromRow}:D{toRow}"].Merge = true;
                             wsRecon.Cells[$"A{fromRow}:D{toRow}"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;                            
@@ -405,8 +520,15 @@ namespace RekapMidtrans.Service
                             wsRecon.Cells[$"K{fromRow}:K{toRow}"].Merge = true;
                             wsRecon.Cells[$"K{fromRow}:K{toRow}"].Value = listRekonsiliasiDTO[i].GroupID;
                             wsRecon.Cells[$"V{fromRow}:V{toRow}"].Merge = true;
-                            wsRecon.Cells[$"V{fromRow}:V{toRow}"].Formula = $"=IF(E{fromRow}-SUM(U{fromRow}:U{toRow})=0, \"-\", E{fromRow}-SUM(U{fromRow}:U{toRow}))";
+                            wsRecon.Cells[$"V{fromRow}"].Formula = $"=IF(E{fromRow}-SUM(U{fromRow}:U{toRow})=0, \"-\", E{fromRow}-SUM(U{fromRow}:U{toRow}))";
+                            pck.Workbook.Calculate();
                             wsRecon.Cells[$"V{fromRow}:V{toRow}"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                            var nilai = wsRecon.Cells[$"V{fromRow}"].Value;
+                            if (nilai.ToString() != "-")
+                            {
+                                wsRecon.Cells[$"V{fromRow}:V{toRow}"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                                wsRecon.Cells[$"V{fromRow}:V{toRow}"].Style.Fill.BackgroundColor.SetColor(System.Drawing.ColorTranslator.FromHtml("#FFFF00"));
+                            }
                             wsRecon.Cells[$"V{fromRow}:V{toRow}"].Style.Numberformat.Format = "#,##0";
                             fromRow = toRow + 1;
                             toRow = 0;
@@ -419,12 +541,14 @@ namespace RekapMidtrans.Service
                         wsRecon.Column(col).Width += 5;
                         wsRecon.Column(col).Style.VerticalAlignment = ExcelVerticalAlignment.Center;
                     }
-                    var border = wsRecon.Cells[$"A1:AM{Row}"].Style.Border;
+                    var border = wsRecon.Cells[$"A1:AO{Row}"].Style.Border;
 
                     border.Top.Style = ExcelBorderStyle.Thin;
                     border.Bottom.Style = ExcelBorderStyle.Thin;
                     border.Left.Style = ExcelBorderStyle.Thin;
                     border.Right.Style = ExcelBorderStyle.Thin;
+
+                    Console.WriteLine($"\n\nFinish...\n\n");
 
                     return new DownloadExcelResponse()
                     {
@@ -436,8 +560,8 @@ namespace RekapMidtrans.Service
             }
             catch (Exception ex) 
             {
-                Console.WriteLine(ex.Message);
-                throw ex;
+                Console.WriteLine($"\nError : {ex.Message}\n");
+                throw new Exception($"Error : {ex.Message}\n");
             }
         }
     }

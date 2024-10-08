@@ -28,5 +28,7 @@
         public double VoucherDiscount { get; set; }
         public double GrossProfit { get; set; }
         public string Sales { get; set; }
+        public int Refund { get; set; }
+        public int InRow { get; set; }
     }
 }

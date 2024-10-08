@@ -40,7 +40,7 @@ namespace RekapMidtrans.Controllers
             }
             catch (Exception ex)
             {
-                return Problem("Message.SorrySomethingWhenWrong");
+                return Problem(ex.Message);
             }
         }
     }
