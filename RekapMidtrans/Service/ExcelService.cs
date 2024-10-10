@@ -91,10 +91,11 @@ namespace RekapMidtrans.Service
             DataRow dr = dt.NewRow();
             for (int i = 1; i <= totalRows; i++)
             {
-
+                Console.WriteLine($"Reading Row : {i}/{totalRows}");
                 if (i > 1) dr = dt.Rows.Add();
-                for (int j = 1; j <= totalCols; j++)
+                for (int j = 1; j <= 10; j++)
                 {
+                    Console.WriteLine($"Reading Column : {j}/{totalCols}");
                     if (i == 1)
                         dt.Columns.Add(oSheet.Cells[i, j].Value == null ? "" : oSheet.Cells[i, j].Value.ToString());
                     else
