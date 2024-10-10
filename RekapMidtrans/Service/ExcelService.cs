@@ -109,11 +109,11 @@ namespace RekapMidtrans.Service
             OrderDetailDTO result = new();
             using (var client = new HttpClient())
             {
-                // Menambahkan header Authorization
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
                 try
                 {
+                    // Menambahkan header Authorization
+                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
                     HttpResponseMessage response = await client.GetAsync(apiUrl);
                     response.EnsureSuccessStatusCode();
 
@@ -131,38 +131,41 @@ namespace RekapMidtrans.Service
         private async Task<List<OrderDetailDTO>> GetOrderID(UploadExcelRequest request, string groupID) 
         {
             List<OrderDetailDTO> result = new();
-            // URL API yang ingin diakses
-            var apiUrl = $"{request.URLgetIdOrder}{groupID}&";
-            using (var client = new HttpClient())
+            try
             {
-                // Menambahkan header Authorization
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", request.token);
-
-                try
+                // URL API yang ingin diakses
+                var apiUrl = $"{request.URLgetIdOrder}{groupID}&";
+                using (var client = new HttpClient())
                 {
-                    HttpResponseMessage response = await client.GetAsync(apiUrl);
-                    response.EnsureSuccessStatusCode();
+                    // Menambahkan header Authorization
+                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", request.token);
 
-                    string responseBody = await response.Content.ReadAsStringAsync();
-                    var apiResponse = JsonSerializer.Deserialize<ApiResponse>(responseBody);
-                    if (apiResponse.data != null)
-                    {
-                        foreach (var order in apiResponse.data.data)
+                
+                        HttpResponseMessage response = await client.GetAsync(apiUrl);
+                        response.EnsureSuccessStatusCode();
+
+                        string responseBody = await response.Content.ReadAsStringAsync();
+                        var apiResponse = JsonSerializer.Deserialize<ApiResponse>(responseBody);
+                        if (apiResponse.data != null)
                         {
-                            var responseOrder = await GetOrderDetail(request.token, $"{request.URLgetOrderDetail}{order.id_so}");
-                            if (responseOrder.data.id_group.ToString() == groupID)
-                            {                            
-                                result.Add(responseOrder);
+                            foreach (var order in apiResponse.data.data)
+                            {
+                                var responseOrder = await GetOrderDetail(request.token, $"{request.URLgetOrderDetail}{order.id_so}");
+                                if (responseOrder.data.id_group.ToString() == groupID)
+                                {                            
+                                    result.Add(responseOrder);
+                                }
                             }
                         }
-                    }
-                }
-                catch (HttpRequestException e)
-                {
-                    Console.WriteLine($"Request error: {e.Message}");
+                
+                        return result;
                 }
             }
-            return result;
+            catch (HttpRequestException e)
+            {
+                Console.WriteLine($"Request error: {e.Message}");
+                throw new Exception(e.Message);
+            }
         }
         static string GetNumber(string input)
         {
@@ -271,10 +274,11 @@ namespace RekapMidtrans.Service
                             string OrderID = dt.Rows[i].ItemArray.GetValue(1).ToString();
                             if (string.IsNullOrEmpty(dt.Rows[i].ItemArray.GetValue(1).ToString())) break;
                             
-                            RekonsiliasiDTO rekonsiliasiDTO = new RekonsiliasiDTO();
+                            
                             var data = await GetOrderID(request, GetNumber(OrderID));
                             if (data.Count == 0)
                             {
+                                RekonsiliasiDTO rekonsiliasiDTO = new RekonsiliasiDTO();
                                 rekonsiliasiDTO.InRow = i + 2;
                                 rekonsiliasiDTO.DateAndTime = dt.Rows[i].ItemArray.GetValue(0).ToString();
                                 rekonsiliasiDTO.OrderID = dt.Rows[i].ItemArray.GetValue(1).ToString();
@@ -290,7 +294,8 @@ namespace RekapMidtrans.Service
                             foreach (var item in data)
                             {
                                 foreach (var detail in item.data.orderDetail.product)
-                                {                                    
+                                {
+                                    RekonsiliasiDTO rekonsiliasiDTO = new RekonsiliasiDTO();
                                     rekonsiliasiDTO.InRow = i+2;
                                     rekonsiliasiDTO.DateAndTime = dt.Rows[i].ItemArray.GetValue(0).ToString();
                                     rekonsiliasiDTO.OrderID = dt.Rows[i].ItemArray.GetValue(1).ToString();
