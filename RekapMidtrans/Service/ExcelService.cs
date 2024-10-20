@@ -436,6 +436,7 @@ namespace RekapMidtrans.Service
                         wsRecon.Cells[$"C{Row}"].Value = listRekonsiliasiDTO[i].Channel;
                         wsRecon.Cells[$"D{Row}"].Value = listRekonsiliasiDTO[i].TransactionType;
                         wsRecon.Cells[$"F{Row}"].Value = listRekonsiliasiDTO[i].TransactionStatus;
+                        wsRecon.Cells[$"AB{Row}"].Value = listRekonsiliasiDTO[i].Notes;
                         wsRecon.Cells[$"AE{Row}"].Value = listRekonsiliasiDTO[i].Refund > 0 ? listRekonsiliasiDTO[i].Refund : string.Empty;
                         string fieldNotes = string.Empty;
                         if (listRekonsiliasiDTO[i].Refund > 0) fieldNotes = "Refund";
@@ -483,7 +484,7 @@ namespace RekapMidtrans.Service
                             wsRecon.Cells[$"AA{fromRowOrder}:AA{toRowOrder}"].Value = listRekonsiliasiDTO[i].Adjusment;
                             wsRecon.Cells[$"AA{fromRowOrder}:AA{toRowOrder}"].Style.Numberformat.Format = "#,##0";
                             wsRecon.Cells[$"AB{fromRowOrder}:AB{toRowOrder}"].Merge = true;
-                            wsRecon.Cells[$"AB{fromRowOrder}:AB{toRowOrder}"].Value = listRekonsiliasiDTO[i].Notes;
+                            //wsRecon.Cells[$"AB{fromRowOrder}:AB{toRowOrder}"].Value = listRekonsiliasiDTO[i].Notes;
                             wsRecon.Cells[$"AC{fromRowOrder}:AC{toRowOrder}"].Merge = true;
                             wsRecon.Cells[$"AC{fromRowOrder}:AC{toRowOrder}"].Formula = $"=U{fromRowOrder}-X{fromRowOrder}+Y{fromRowOrder}+AA{fromRowOrder}";
                             wsRecon.Cells[$"AC{fromRowOrder}:AC{toRowOrder}"].Style.Numberformat.Format = "#,##0";
@@ -564,7 +565,7 @@ namespace RekapMidtrans.Service
                     #endregion
                     for (int col = 1; col <= wsRecon.Dimension.End.Column; col++)
                     {
-                        wsRecon.Column(col).Width += 5;
+                        wsRecon.Column(col).Width += 3;
                         wsRecon.Column(col).Style.VerticalAlignment = ExcelVerticalAlignment.Center;
                     }
                     var border = wsRecon.Cells[$"A1:AO{Row}"].Style.Border;
