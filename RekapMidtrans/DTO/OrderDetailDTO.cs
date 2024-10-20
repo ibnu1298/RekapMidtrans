@@ -9,7 +9,7 @@
 
     public class Data
     {
-        public object adjustment { get; set; }
+        public Adjusment[]? adjustment { get; set; }
         public bool airplane { get; set; }
         public int category { get; set; }
         public object cicilan { get; set; }
@@ -223,6 +223,31 @@
         public string keterangan { get; set; }
         public string status { get; set; }
         public string user { get; set; }
+    }
+
+    public class Adjusment
+    {
+        public BiayaTambahan[] biaya_tambahan { get; set; }
+        public string currency { get; set; }
+        public string date { get; set; }
+        public long id { get; set; }
+        public string payment { get; set; }
+        public string payment_link { get; set; }
+        public string proof { get; set; }
+        public string reason { get; set; }
+        public string status { get; set; }
+        public string type { get; set; }
+        public string user { get; set; }
+        public long value { get; set; }
+    }
+
+    public class BiayaTambahan
+    {
+        public int id_adjustment { get; set; }
+        public int id_so { get; set; }
+        public long jumlah { get; set; }
+        public string keterangan { get; set; }
+        public string tanggal { get; set; }
     }
 
 }

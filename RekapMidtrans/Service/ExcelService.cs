@@ -325,6 +325,25 @@ namespace RekapMidtrans.Service
                                     rekonsiliasiDTO.VoucherDiscount = item.data.financialInformation.expense.discount;
                                     rekonsiliasiDTO.Refund = item.data.financialInformation.expense.refund;
                                     rekonsiliasiDTO.Sales = item.data.sales;
+                                    long getAdjusment = 0;
+                                    string getKetAdjust = "";
+                                    if (item?.data?.adjustment?[0] != null)
+                                    {                                        
+                                        foreach (var adjust in item?.data?.adjustment[0]?.biaya_tambahan)
+                                        {
+                                            getAdjusment += adjust.jumlah;
+                                            if (adjust.jumlah > 0)
+                                            {
+                                                if(getKetAdjust != "")
+                                                {
+                                                    getKetAdjust += " & ";
+                                                }
+                                                getKetAdjust += adjust.keterangan;
+                                            }
+                                        }
+                                    }
+                                    rekonsiliasiDTO.Adjusment = getAdjusment;
+                                    rekonsiliasiDTO.Notes = getKetAdjust;
                                     listRekonsiliasiDTO.Add(rekonsiliasiDTO);
                                 }
                             }
@@ -461,9 +480,10 @@ namespace RekapMidtrans.Service
                             wsRecon.Cells[$"Z{fromRowOrder}:Z{toRowOrder}"].Formula = $"=X{fromRowOrder}-Y{fromRowOrder}";
                             wsRecon.Cells[$"Z{fromRowOrder}:Z{toRowOrder}"].Style.Numberformat.Format = "#,##0";
                             wsRecon.Cells[$"AA{fromRowOrder}:AA{toRowOrder}"].Merge = true;
-                            //wsRecon.Cells[$"AA{fromRowOrder}:AA{toRowOrder}"].Value = "";
+                            wsRecon.Cells[$"AA{fromRowOrder}:AA{toRowOrder}"].Value = listRekonsiliasiDTO[i].Adjusment;
+                            wsRecon.Cells[$"AA{fromRowOrder}:AA{toRowOrder}"].Style.Numberformat.Format = "#,##0";
                             wsRecon.Cells[$"AB{fromRowOrder}:AB{toRowOrder}"].Merge = true;
-                            wsRecon.Cells[$"AB{fromRowOrder}:AB{toRowOrder}"].Value = "";
+                            wsRecon.Cells[$"AB{fromRowOrder}:AB{toRowOrder}"].Value = listRekonsiliasiDTO[i].Notes;
                             wsRecon.Cells[$"AC{fromRowOrder}:AC{toRowOrder}"].Merge = true;
                             wsRecon.Cells[$"AC{fromRowOrder}:AC{toRowOrder}"].Formula = $"=U{fromRowOrder}-X{fromRowOrder}+Y{fromRowOrder}+AA{fromRowOrder}";
                             wsRecon.Cells[$"AC{fromRowOrder}:AC{toRowOrder}"].Style.Numberformat.Format = "#,##0";

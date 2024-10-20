@@ -30,5 +30,7 @@
         public string Sales { get; set; }
         public int Refund { get; set; }
         public int InRow { get; set; }
+        public long Adjusment{ get; set; }
+        public string Notes { get; set; }
     }
 }
